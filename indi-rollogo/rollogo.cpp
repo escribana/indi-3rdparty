@@ -1,6 +1,5 @@
 /*******************************************************************************
-
- Edited version of the Dome Simulator
+ Edited version of the Dome Simulator : 2020/21 T. Schriber
  Copyright(c) 2014 Jasem Mutlaq. All rights reserved.
 
  This library is free software; you can redistribute it and/or
