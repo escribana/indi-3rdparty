@@ -134,8 +134,7 @@ bool RolLOGO::Disconnect()
 }
 
 /**************************************************************************************
-** Timeout has to be loaded, so "Timeframe" is defined and first Timerhit() can
-** set the corresponding switch buttons in UI of roof.
+** Motion timeout has to be loaded, so "MotionTimeframe" can be set before connection
 ***************************************************************************************/
 void RolLOGO::ISGetProperties(const char * dev)
 {
@@ -144,13 +143,9 @@ void RolLOGO::ISGetProperties(const char * dev)
 
     defineProperty(&TimeoutNP);
     loadConfig(true, "TIMEOUT");
-    TimeFrame = TimeoutP[0].value; // initialise timeframe
-    if (TimeFrame <= 0)
+    MotionTimeFrame = TimeoutP[0].value; // initialise timeframe
+    if (MotionTimeFrame <= 0)
         LOG_WARN("Please set motion timeout in 'Options' for roof control!");
-    else
-        // start internal timer in case roof is opening or already opened
-        // LOGF_INFO("Timeframe for motion set to (%d)", TimeFrame);
-        gettimeofday(&startMotionTimer, nullptr);
     return;
 }
 
@@ -227,7 +222,8 @@ bool RolLOGO::initRoofStatus()
     {
         if ((is_closed_North == ISS_OFF) || (is_closed_South == ISS_OFF))
         {
-            LOG_INFO("Roof is open or opening: Setting switches");
+            LOG_INFO("Roof is open or opening");
+            MotionTimeLeft = MotionTimeFrame;
             DomeMotionSP.s = IPS_BUSY;
             DomeMotionS[DOME_CW].s = ISS_ON;    // Roof open switch
             DomeMotionS[DOME_CCW].s = ISS_OFF;  // Roof close switch
@@ -238,7 +234,8 @@ bool RolLOGO::initRoofStatus()
     {
         if ((is_open_North == ISS_OFF) || (is_open_South == ISS_OFF))
         {
-            LOG_INFO("Roof is closed or closeing: Setting switches");
+            LOG_INFO("Roof is closed or closeing");
+            MotionTimeLeft = MotionTimeFrame;
             DomeMotionSP.s = IPS_BUSY;
             DomeMotionS[DOME_CW].s = ISS_OFF;   // Roof open switch
             DomeMotionS[DOME_CCW].s = ISS_ON;   // Roof close switch
@@ -352,46 +349,45 @@ void RolLOGO::TimerHit()
     checkRoofStatus();
     if (DomeMotionSP.s == IPS_BUSY)
     {
-        double timeleft = CalcTimeLeft(startMotionTimer);
-        // LOGF_INFO("*** Time left for motion: (%f)", timeleft);
-        if (TimeFrame > 0) // timeframe has been set
-        {
-            if (DomeMotionS[DOME_CW].s == ISS_ON) // Roll off is open/ing
-            {
-                if ((is_open_North == ISS_ON) && (is_open_South == ISS_ON))
-                {
-                    LOG_INFO("Roof is open");
-                    clearFlags();
-                    SetParked(false);
-                    DomeMotionSP.s = IPS_OK;             // show success in indi-UI
-                    IDSetSwitch(&DomeMotionSP, nullptr); // DOME_UNPARKED shows IPS_IDLE!
-                }
-                else if (timeleft <= 0)
-                    LOG_WARN("Rolloff motion timeout has expired while opening!");
-                else {
-                    delay = 1000;           // opening active
-                }
-            }
-            else if (DomeMotionS[DOME_CCW].s == ISS_ON) // Roll Off is close/ing
-            {
-                if ((is_closed_North == ISS_ON) && (is_closed_South == ISS_ON))
-                {
-                    LOG_INFO("Roof is closed");
-                    clearFlags();
-                    SetParked(true);
-                    DomeMotionSP.s = IPS_OK;             // show success in indi-UI
-                    IDSetSwitch(&DomeMotionSP, nullptr); // DOME_UNPARKED shows IPS_IDLE!
-                }
-                else if (timeleft <= 0)
-                    LOG_WARN("Rolloff motion timeout has expired while closing!");
-                else {
-                    delay = 1000;           // closing active
 
-                }
+        if (DomeMotionS[DOME_CW].s == ISS_ON) // Roll off is open/ing
+        {
+            if ((is_open_North == ISS_ON) && (is_open_South == ISS_ON))
+            {
+                LOG_INFO("Roof is open");
+                MotionTimeLeft = 0;
+                clearFlags();
+                SetParked(false);
+                DomeMotionSP.s = IPS_OK;             // show success in indi-UI
+                IDSetSwitch(&DomeMotionSP, nullptr); // DOME_UNPARKED shows IPS_IDLE!
+            }
+            else if (MotionTimeLeft <= 0)
+                LOG_WARN("Rolloff motion timeout has expired while opening!");
+            else
+            {
+                MotionTimeLeft -= 1;
+                delay = 1000;           // opening active
             }
         }
-        else if (TimeFrame <= 0)
-            LOG_WARN("Please set correct motion timeout in 'Options'");
+        else if (DomeMotionS[DOME_CCW].s == ISS_ON) // Roll Off is close/ing
+        {
+            if ((is_closed_North == ISS_ON) && (is_closed_South == ISS_ON))
+            {
+                LOG_INFO("Roof is closed");
+                MotionTimeLeft = 0;
+                clearFlags();
+                SetParked(true);
+                DomeMotionSP.s = IPS_OK;             // show success in indi-UI
+                IDSetSwitch(&DomeMotionSP, nullptr); // DOME_UNPARKED shows IPS_IDLE!
+            }
+            else if (MotionTimeLeft <= 0)
+                LOG_WARN("Rolloff motion timeout has expired while closing!");
+            else
+            {
+                delay = 1000;           // closing active
+                MotionTimeLeft -= 1;
+            }
+        }
         else
         {
             clearFlags();
@@ -400,23 +396,9 @@ void RolLOGO::TimerHit()
     }
     // Even when no roof movement requested, will come through occasionally. Use timer to update roof status
     // in case roof has been operated externally by a remote control, locks applied...
-    currentTimerID = SetTimer(delay);
-    // LOGF_INFO("*** Timerhit: delay set to: (%d)", delay);
-}
-
-float RolLOGO::CalcTimeLeft(timeval start)
-{
-
-    double timesince;
-    double timeleft;
-    struct timeval now { 0, 0 };
-    gettimeofday(&now, nullptr);
-
-    timesince =
-            (double)(now.tv_sec * 1000.0 + now.tv_usec / 1000) - (double)(start.tv_sec * 1000.0 + start.tv_usec / 1000);
-    timesince = timesince / 1000;
-    timeleft  = TimeFrame - timesince;
-    return timeleft;
+    LOGF_INFO("*** Timerhit: Delay set to: %ds", delay/1000);
+    LOGF_INFO("*** Timerhit: Time left for motion: %ds", MotionTimeLeft);
+    LoopID = SetTimer(delay);
 }
 
 bool RolLOGO::saveConfigItems(FILE *fp)
@@ -432,8 +414,8 @@ bool RolLOGO::saveConfigItems(FILE *fp)
  */
 IPState RolLOGO::Move(DomeDirection dir, DomeMotionCommand operation)
 {
-    TimeFrame = TimeoutP[0].value;
-    if (TimeFrame == 0)
+    MotionTimeFrame = TimeoutP[0].value;
+    if (MotionTimeFrame == 0)
     {
         LOG_WARN("Please set motion timeout in 'Options' for proper operation!");
         return IPS_ALERT;
@@ -480,10 +462,10 @@ IPState RolLOGO::Move(DomeDirection dir, DomeMotionCommand operation)
                     return IPS_ALERT;
                 }
             }
-            gettimeofday(&startMotionTimer, nullptr);
-            RemoveTimer(currentTimerID); //early stop of timer
-            currentTimerID = SetTimer(1000);
-            // LOGF_INFO("*** Move: delay set to: (%d)", 1000);
+            MotionTimeLeft = MotionTimeFrame;
+            RemoveTimer(LoopID); //early stop of timer
+            LoopID = SetTimer(1000);
+            LOGF_INFO("*** Move: Delay set to: %ds", 1);
             return IPS_BUSY; // let TimerHit() do the work!
         }
         else // MOTION_STOP || already moving
@@ -559,7 +541,6 @@ bool RolLOGO::Abort()
         {
             LOG_WARN("Abort roof action requested. The roof appears to be closing");
         }
-        TimeFrame = -1;
         if (clearFlags())
             setDomeState(DOME_IDLE);
         else

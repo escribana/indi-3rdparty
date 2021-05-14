@@ -19,7 +19,6 @@
 #pragma once
 
 #include "indidome.h"
-#include "inditimer.h"
 #include <modbus/modbus-tcp.h>
 
 class RolLOGO : public INDI::Dome
@@ -64,10 +63,9 @@ class RolLOGO : public INDI::Dome
 private:
     bool initRoofStatus();
     float CalcTimeLeft(timeval start);
-    double TimeFrame { -1 };
-    struct timeval startMotionTimer { 0, 0 };
-    int currentTimerID;
-    bool contactEstablished = false;
+    int MotionTimeFrame { -1 };
+    int MotionTimeLeft = 0;
+    int LoopID;
 
     ILight RoofStatusL_North[2];
     ILightVectorProperty RoofStatusLP_North;
