@@ -222,7 +222,7 @@ bool RolLOGO::initRoofStatus()
     {
         if ((is_closed_North == ISS_OFF) || (is_closed_South == ISS_OFF))
         {
-            LOG_INFO("Roof is open or opening");
+            LOG_INFO("Roof is already open or opening");
             MotionTimeLeft = MotionTimeFrame;
             DomeMotionSP.s = IPS_BUSY;
             DomeMotionS[DOME_CW].s = ISS_ON;    // Roof open switch
@@ -234,7 +234,7 @@ bool RolLOGO::initRoofStatus()
     {
         if ((is_open_North == ISS_OFF) || (is_open_South == ISS_OFF))
         {
-            LOG_INFO("Roof is closed or closeing");
+            LOG_INFO("Roof is already closed or closeing");
             MotionTimeLeft = MotionTimeFrame;
             DomeMotionSP.s = IPS_BUSY;
             DomeMotionS[DOME_CW].s = ISS_OFF;   // Roof open switch
@@ -394,10 +394,11 @@ void RolLOGO::TimerHit()
             setDomeState(DOME_IDLE);
         }
     }
-    // Even when no roof movement requested, will come through occasionally. Use timer to update roof status
-    // in case roof has been operated externally by a remote control, locks applied...
-    LOGF_INFO("*** Timerhit: Delay set to: %ds", delay/1000);
-    LOGF_INFO("*** Timerhit: Time left for motion: %ds", MotionTimeLeft);
+    /* Even when no roof movement requested, will come through occasionally. Use timer to update roof status
+    * in case roof has been operated externally by a remote control, locks applied...
+    * LOGF_INFO("*** Timerhit: Delay set to: %ds", delay/1000);
+    * LOGF_INFO("*** Timerhit: Time left for motion: %ds", MotionTimeLeft);
+    */
     LoopID = SetTimer(delay);
 }
 
@@ -434,7 +435,7 @@ IPState RolLOGO::Move(DomeDirection dir, DomeMotionCommand operation)
                 }
                 // Initiate action
                 if (setFlag(RELAY_ROOF_OPEN, 1))
-                    LOG_INFO("Roof opening initated ...");
+                    LOG_INFO("Roof opening initiated ...");
                 else
                 {
                     LOG_WARN("Roof opening failed");
@@ -463,9 +464,9 @@ IPState RolLOGO::Move(DomeDirection dir, DomeMotionCommand operation)
                 }
             }
             MotionTimeLeft = MotionTimeFrame;
-            RemoveTimer(LoopID); //early stop of timer
+            //early stop of Mainloop
+            RemoveTimer(LoopID);
             LoopID = SetTimer(1000);
-            LOGF_INFO("*** Move: Delay set to: %ds", 1);
             return IPS_BUSY; // let TimerHit() do the work!
         }
         else // MOTION_STOP || already moving
@@ -519,27 +520,27 @@ bool RolLOGO::Abort()
 
     if (closed && DomeMotionSP.s != IPS_BUSY)
     {
-        LOG_WARN("Roof appears to be closed and stationary, no action taken on abort request");
+        LOG_WARN("Roof appears to be closed and stationary, no action taken");
         return true;
     }
     else if (opened && DomeMotionSP.s != IPS_BUSY)
     {
-        LOG_WARN("Roof appears to be open and stationary, no action taken on abort request");
+        LOG_WARN("Roof appears to be open and stationary, no action taken");
         return true;
     }
     else if (DomeMotionSP.s != IPS_BUSY)
     {
-        LOG_WARN("Roof appears to be partially open and stationary, no action taken on abort request");
+        LOG_WARN("Roof appears to be partially open and stationary, no action taken");
     }
     else if (DomeMotionSP.s == IPS_BUSY)
     {
         if (DomeMotionS[DOME_CW].s == ISS_ON)
         {
-            LOG_WARN("Abort roof action requested. The roof appears to be opening");
+            LOG_WARN("Abort action requested on opening roof");
         }
         else if (DomeMotionS[DOME_CCW].s == ISS_ON)
         {
-            LOG_WARN("Abort roof action requested. The roof appears to be closing");
+            LOG_WARN("Abort action requested on closing roof");
         }
         if (clearFlags())
             setDomeState(DOME_IDLE);
