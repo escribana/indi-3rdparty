@@ -18,5 +18,4 @@ rollogo.h
 The implementation is specific to a particular installation using an Siemens LOGO! controlled with Modbus.
 
 TODO:
-- implement new inditimer
 - add monitoring
