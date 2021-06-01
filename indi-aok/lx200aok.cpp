@@ -1154,8 +1154,7 @@ IPState LX200Skywalker::GuideNorth(uint32_t ms)
         LOG_ERROR("Cannot guide while moving.");
         return IPS_ALERT;
     }
-    SendPulseCmd(LX200_NORTH, ms);
-    return IPS_BUSY;
+    return SendPulseCmd(LX200_NORTH, ms) ? IPS_OK : IPS_ALERT;
 }
 
 IPState LX200Skywalker::GuideSouth(uint32_t ms)
@@ -1166,8 +1165,7 @@ IPState LX200Skywalker::GuideSouth(uint32_t ms)
         LOG_ERROR("Cannot guide while moving.");
         return IPS_ALERT;
     }
-    SendPulseCmd(LX200_SOUTH, ms);
-    return IPS_BUSY;
+    return SendPulseCmd(LX200_SOUTH, ms) ? IPS_OK : IPS_ALERT;
 }
 
 IPState LX200Skywalker::GuideEast(uint32_t ms)
@@ -1178,8 +1176,7 @@ IPState LX200Skywalker::GuideEast(uint32_t ms)
         LOG_ERROR("Cannot guide while moving.");
         return IPS_ALERT;
     }
-    SendPulseCmd(LX200_EAST, ms);
-    return IPS_BUSY;
+    return SendPulseCmd(LX200_EAST, ms) ? IPS_OK : IPS_ALERT;
 }
 
 IPState LX200Skywalker::GuideWest(uint32_t ms)
@@ -1190,8 +1187,7 @@ IPState LX200Skywalker::GuideWest(uint32_t ms)
         LOG_ERROR("Cannot guide while moving.");
         return IPS_ALERT;
     }
-    SendPulseCmd(LX200_WEST, ms);
-    return IPS_BUSY;
+    return SendPulseCmd(LX200_WEST, ms) ? IPS_OK : IPS_ALERT;
 }
 
 int LX200Skywalker::SendPulseCmd(int8_t direction, uint32_t duration_msec)
