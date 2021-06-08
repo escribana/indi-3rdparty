@@ -76,18 +76,13 @@ LX200Skywalker::LX200Skywalker() : LX200Telescope()
 
 }
 
-/**************************************************************************************
-**
-***************************************************************************************/
+//**************************************************************************************
 const char *LX200Skywalker::getDefaultName()
 {
     return "AOK Skywalker";
 }
 
-
-/**************************************************************************************
-**
-***************************************************************************************/
+//**************************************************************************************
 bool LX200Skywalker::Handshake()
 {
     char fwinfo[64] = {0}; // 64 for strcpy
@@ -107,10 +102,54 @@ bool LX200Skywalker::Handshake()
     }
 }
 
+//**************************************************************************************
+void LX200Skywalker::ISGetProperties(const char *dev)
+{
+    if (dev != nullptr && strcmp(dev, getDeviceName()) != 0)
+        return;
 
-/**************************************************************************************
-**
-***************************************************************************************/
+    LX200Telescope::ISGetProperties(dev);
+    if (isConnected())
+    {
+        if (HasTrackMode() && TrackModeS != nullptr)
+            defineProperty(&TrackModeSP);
+        if (CanControlTrack())
+            defineProperty(&TrackStateSP);
+        if (HasTrackRate())
+            defineProperty(&TrackRateNP);
+    }
+    /*
+        if (isConnected())
+        {
+            if (genericCapability & LX200_HAS_ALIGNMENT_TYPE)
+                defineProperty(&AlignmentSP);
+
+            if (genericCapability & LX200_HAS_TRACKING_FREQ)
+                defineProperty(&TrackingFreqNP);
+
+            if (genericCapability & LX200_HAS_PULSE_GUIDING)
+                defineProperty(&UsePulseCmdSP);
+
+            if (genericCapability & LX200_HAS_SITES)
+            {
+                defineProperty(&SiteSP);
+                defineProperty(&SiteNameTP);
+            }
+
+            defineProperty(&GuideNSNP);
+            defineProperty(&GuideWENP);
+
+            if (genericCapability & LX200_HAS_FOCUS)
+            {
+                defineProperty(&FocusMotionSP);
+                defineProperty(&FocusTimerNP);
+                defineProperty(&FocusModeSP);
+            }
+        }
+        */
+}
+
+//**************************************************************************************
 bool LX200Skywalker::ISNewSwitch(const char *dev, const char *name, ISState *states, char *names[], int n)
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
@@ -257,6 +296,7 @@ bool LX200Skywalker::ISNewSwitch(const char *dev, const char *name, ISState *sta
     return LX200Telescope::ISNewSwitch(dev, name, states, names, n);
 }
 
+//**************************************************************************************
 bool LX200Skywalker::ISNewNumber(const char *dev, const char *name, double values[], char *names[], int n)
 {
     if (dev != nullptr && strcmp(dev, getDeviceName()) == 0)
@@ -291,11 +331,7 @@ bool LX200Skywalker::ISNewNumber(const char *dev, const char *name, double value
     return LX200Telescope::ISNewNumber(dev, name, values, names, n);
 }
 
-
-
-/**************************************************************************************
-**
-***************************************************************************************/
+//**************************************************************************************
 bool LX200Skywalker::initProperties()
 {
     /* Make sure to init parent properties first */
@@ -331,9 +367,7 @@ bool LX200Skywalker::initProperties()
     return true;
 }
 
-/**************************************************************************************
-**
-***************************************************************************************/
+//**************************************************************************************
 bool LX200Skywalker::updateProperties()
 {
     if (! LX200Telescope::updateProperties()) return false;
@@ -358,9 +392,7 @@ bool LX200Skywalker::updateProperties()
     return true;
 }
 
-/**************************************************************************************
-**
-***************************************************************************************/
+//**************************************************************************************
 bool LX200Skywalker::Connect()
 {
     if (! DefaultDevice::Connect())
@@ -373,54 +405,13 @@ bool LX200Skywalker::Disconnect()
     return DefaultDevice::Disconnect();
 }
 
-/**************************************************************************************
-**
-***************************************************************************************
+/***************************************************************************************
 bool LX200Skywalker::ReadScopeStatus()
 {
     return (LX200Telescope::ReadScopeStatus());  // TCS does not :D#! -> ovverride isSlewComplete
 }*/
 
-bool LX200Skywalker::isSlewComplete()
-{
-    char response[TCS_RESPONSE_BUFFER_LENGTH];
-    bool result = false;
-    if (sendQuery("?#", response)) // Send query is sent only if not tracking (cf. lx200telescope)
-    {
-        // Slew complete?
-        if (*response == '0') // Query response == '0', mount is not slewing (anymore)
-        {
-            if (TrackState == SCOPE_SLEWING)
-            {
-                notifyTrackState(SCOPE_TRACKING);
-                if ((notifyPierSide()) && (MountLocked())) // Normally lock is set by TCS if slew ends
-                {
-                    notifyMountLock(true);
-                    result = true;
-                }
-                else
-                    LOG_ERROR("Mount could not be locked by TCS!");
-            }
-            else if (TrackState == SCOPE_PARKING)
-            {
-                notifyTrackState(SCOPE_PARKED);
-                if (SetMountLock(false))
-                {
-                    notifyMountLock(false);
-                    result = true;
-                }
-                else
-                    LOG_ERROR("Mount could not be unlocked by TCS!");
-            }
-        }
-    }
-    return result;
-}
-
-/**************************************************************************************
-**
-***************************************************************************************/
-
+//**************************************************************************************
 void LX200Skywalker::getBasicData()
 {
     LOG_DEBUG(__FUNCTION__);
@@ -503,10 +494,7 @@ void LX200Skywalker::getBasicData()
 
 }
 
-/**************************************************************************************
-**
-***************************************************************************************/
-
+//**************************************************************************************
 bool LX200Skywalker::updateLocation(double latitude, double longitude, double elevation)
 {
     LOGF_DEBUG("%s Lat:%.3lf Lon:%.3lf", __FUNCTION__, latitude, longitude);
@@ -537,66 +525,107 @@ bool LX200Skywalker::updateLocation(double latitude, double longitude, double el
     return true;
 }
 
-/**************************************************************************************
-**
-***************************************************************************************/
-
-bool LX200Skywalker::Park()
+/*********************************************************************************
+ * config file
+ *********************************************************************************/
+bool LX200Skywalker::saveConfigItems(FILE *fp)
 {
-    if (INDI::Telescope::TrackState == SCOPE_PARKED)  // already parked
-    {
-        // Important: SetParked() invokes WriteParkData() which saves state and position
-        // in ParkData.XML (this means parkstate will be overwritten with true)
-        INDI::Telescope::SetParked(true);
-        return true;
-    }
-    else
-        return (LX200Telescope::Park());
-}
+    LOG_DEBUG(__FUNCTION__);
+    IUSaveConfigText(fp, &SiteNameTP);
 
-bool LX200Skywalker::UnPark()
-{
-    char response[TCS_RESPONSE_BUFFER_LENGTH];
-    if (sendQuery(":hW#", response, TCS_NOANSWER))
-    {
-        // Important: SetParked() invokes WriteParkData() which saves state and position
-        // in ParkData.XML (this means parkstate is overwritten with false!)
-        INDI::Telescope::SetParked(false);
-        if ((MountLocked()) && (MountTracking())) // TCS sets Mountlock & Tracking
-        {
-            notifyMountLock(true);
-            // INDI::Telescope::SetParked(false) sets TrackState = SCOPE_IDLE but TCS is tracking
-            notifyTrackState(SCOPE_TRACKING);
-            // INDI::Telescope::SetParked(false) sets ParkSP.S = IPS_IDLE but mount IS unparked!
-            ParkSP.s = IPS_OK;
-            IDSetSwitch(&ParkSP, nullptr);
-            return SyncDefaultPark();
-        }
-        else
-            return false;
-    }
-    else
-        return false;
-}
-
-bool LX200Skywalker::SavePark()
-{
-    char response[TCS_RESPONSE_BUFFER_LENGTH];
-    if (sendQuery(":SP#", response, TCS_NOANSWER))  // Controller sets parkposition and reboots
-        return true;
-    else
-    {
-        LOG_ERROR("Controller did not accept 'SetPark'.");
-        return false;
-    }
+    return LX200Telescope::saveConfigItems(fp);
 }
 
 /********************************************************************************
  * Notifier-Section
  ********************************************************************************/
-// Changed from original "set_" to "notify_" because of the logic behind: From
-// the controller view we change the viewer (and a copy of the model), not the
-// the model itself!
+bool LX200Skywalker::checkLX200EquatorialFormat()
+{
+    LOG_DEBUG(__FUNCTION__);
+    char response[TCS_RESPONSE_BUFFER_LENGTH];
+
+    controller_format = LX200_LONG_FORMAT;
+
+    if (!sendQuery(":GR#", response))
+    {
+        LOG_ERROR("Failed to get RA for format check");
+        return false;
+    }
+    /* If it's short format, try to toggle to high precision format */
+    if (strlen(response) <= 5 || response[5] == '.')
+    {
+        LOG_INFO("Detected low precision format, "
+                 "attempting to switch to high precision.");
+        if (!sendQuery(":U#", response, 0))
+        {
+            LOG_ERROR("Failed to switch precision");
+            return false;
+        }
+        if (!sendQuery(":GR#", response))
+        {
+            LOG_ERROR("Failed to get high precision RA");
+            return false;
+        }
+    }
+    if (strlen(response) <= 5 || response[5] == '.')
+    {
+        controller_format = LX200_SHORT_FORMAT;
+        LOG_INFO("Coordinate format is low precision.");
+        return 0;
+
+    }
+    else if (strlen(response) > 8 && response[8] == '.')
+    {
+        controller_format = LX200_LONGER_FORMAT;
+        LOG_INFO("Coordinate format is ultra high precision.");
+        return 0;
+    }
+    else
+    {
+        controller_format = LX200_LONG_FORMAT;
+        LOG_INFO("Coordinate format is high precision.");
+        return 0;
+    }
+}
+
+bool LX200Skywalker::isSlewComplete()
+{
+    char response[TCS_RESPONSE_BUFFER_LENGTH];
+    bool result = false;
+    if (sendQuery("?#", response)) // Send query is sent only if not tracking (cf. lx200telescope)
+    {
+        // Slew complete?
+        if (*response == '0') // Query response == '0', mount is not slewing (anymore)
+        {
+            if (TrackState == SCOPE_SLEWING)
+            {
+                notifyTrackState(SCOPE_TRACKING);
+                if ((notifyPierSide()) && (MountLocked())) // Normally lock is set by TCS if slew ends
+                {
+                    notifyMountLock(true);
+                    result = true;
+                }
+                else
+                    LOG_ERROR("Mount could not be locked by TCS!");
+            }
+            else if (TrackState == SCOPE_PARKING)
+            {
+                notifyTrackState(SCOPE_PARKED);
+                if (SetMountLock(false))
+                {
+                    notifyMountLock(false);
+                    result = true;
+                }
+                else
+                    LOG_ERROR("Mount could not be unlocked by TCS!");
+            }
+        }
+    }
+    return result;
+}
+
+// Following items were changed from original "set_" to "notify_" because of the logic behind: From
+// the controller view we change the viewer (and a copy of the model), not the the model itself!
 bool LX200Skywalker::notifyPierSide()
 {
     char lstat[20] = {0};
@@ -658,56 +687,47 @@ void LX200Skywalker::notifyTrackState(INDI::Telescope::TelescopeStatus state)
 }
 
 /*********************************************************************************
- * config file
+ * Get/Set
  *********************************************************************************/
-
-bool LX200Skywalker::saveConfigItems(FILE *fp)
+bool LX200Skywalker::setLocalDate(uint8_t days, uint8_t months, uint16_t years)
 {
     LOG_DEBUG(__FUNCTION__);
-    IUSaveConfigText(fp, &SiteNameTP);
+    char cmd[RB_MAX_LEN] = {0};
+    char response[RB_MAX_LEN] = {0};
 
-    return LX200Telescope::saveConfigItems(fp);
+    int yy = years % 100;
+
+    snprintf(cmd, sizeof(cmd), ":SC%02d/%02d/%02d#", months, days, yy);
+    // Correct command string without spaces and with slashes (wrong in lx200driver of INDIcore!)
+    // ":SCMM/DD/YY#" (cf. Meade Telescope Serial Command Protocol; Revision 2010.10)
+    return (sendQuery(cmd, response, 0));
 }
 
-
-/*********************************************************************************
- * Queries
- *********************************************************************************/
-
-/**
- * @brief Send a LX200 query to the communication port and read the result.
- * @param cmd LX200 query
- * @param response answer
- * @return true if the command succeeded, false otherwise
- */
-bool LX200Skywalker::sendQuery(const char* cmd, char* response, char end, int wait)
+bool LX200Skywalker::setLocalTime24(uint8_t hour, uint8_t minute, uint8_t second)
 {
-    LOGF_DEBUG("%s %s End:%c Wait:%ds", __FUNCTION__, cmd, end, wait);
-    response[0] = '\0';
-    char lresponse[TCS_RESPONSE_BUFFER_LENGTH];
-    lresponse [0] = '\0';
-    bool lresult = false;
-    if(!transmit(cmd))
-    {
-        LOGF_ERROR("Command <%s> not transmitted.", cmd);
-    }
-    else if (wait > TCS_NOANSWER)
-    {
-        if (receive(lresponse, end, wait))
-        {
-            strcpy(response, lresponse);
-            return true;
-        }
-    }
-    else
-        lresult = true;
-    return lresult;
+    LOG_DEBUG(__FUNCTION__);
+    char cmd[RB_MAX_LEN] = {0};
+    char response[RB_MAX_LEN] = {0};
+
+    snprintf(cmd, sizeof(cmd), ":SL%02d:%02d:%02d#", hour, minute, second);
+    // Correct command string without spaces (wrong in lx200driver of INDIcore!)
+    // ":SLHH:MM:SS#" (cf. Meade Telescope Serial Command Protocol; Revision 2010.10)
+    return (sendQuery(cmd, response, 0));
 }
 
+bool LX200Skywalker::setUTCOffset(double offset)
+{
+    LOG_DEBUG(__FUNCTION__);
+    char cmd[RB_MAX_LEN] = {0};
+    char response[RB_MAX_LEN] = {0};
+    int hours = offset * -1.0;
 
-/*
- * Set the site longitude.
- */
+    snprintf(cmd, sizeof(cmd), ":SG%+03d#", hours);
+    // Correct command string without spaces (wrong in lx200driver of INDIcore!)
+    // ":SGsHH.H#" (cf. Meade Telescope Serial Command Protocol; Revision 2010.10)
+    return (sendQuery(cmd, response, 0));
+}
+
 bool LX200Skywalker::setSiteLongitude(double longitude)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -725,10 +745,6 @@ bool LX200Skywalker::setSiteLongitude(double longitude)
     return (result);
 }
 
-
-/*
- * Set the site latitude
- */
 bool LX200Skywalker::setSiteLatitude(double Lat)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -745,82 +761,6 @@ bool LX200Skywalker::setSiteLatitude(double Lat)
     return (sendQuery(command, response));
     // default wait for TCS_TIMEOUT seconds is ok because latitude is only set at start
 
-}
-
-bool LX200Skywalker::getJSONData_gp(int jindex, char *jstr, int jstrlen) // preliminary hardcoded  :gp-query
-{
-    char lresponse[128];
-    lresponse [0] = '\0';
-    char lcmd[4] = ":gp";
-    char end = '}';
-    if(!transmit(lcmd))
-    {
-        LOGF_ERROR("Command <%s> not transmitted.", lcmd);
-    }
-    if (receive(lresponse, end, 1))
-    {
-        flush();
-    }
-    else
-    {
-        LOG_ERROR("Failed to get JSONData");
-        return false;
-    }
-    char data[3][40] = {"", "", ""};
-    int returnCode = sscanf(lresponse, "%*[^[][%40[^\"]%40[^,]%*[,]%40[^]]", data[0], data[1], data[2]);
-    if (returnCode < 1)
-    {
-        LOGF_ERROR("Failed to parse JSONData '%s'.", lresponse);
-        return false;
-    }
-    strncpy(jstr, data[jindex], jstrlen);
-    return true;
-}
-
-bool LX200Skywalker::getJSONData_Y(int jindex, char *jstr, int jstrlen) // preliminary hardcoded query :Y#-query
-{
-    char lresponse[128];
-    lresponse [0] = '\0';
-    char lcmd[4] = ":Y#";
-    char end = '}';
-    if(!transmit(lcmd))
-    {
-        LOGF_ERROR("Command <%s> not transmitted.", lcmd);
-    }
-    if (receive(lresponse, end, 1))
-    {
-        flush();
-    }
-    else
-    {
-        LOG_ERROR("Failed to get JSONData");
-        return false;
-    }
-    char data[6][20] = {"", "", "", "", "", ""};
-    int returnCode = sscanf(lresponse, "%20[^,]%*[,]%20[^,]%*[,]%20[^#]%*[#\",]%20[^,]%*[,]%20[^,]%*[,]%20[^,]", data[0],
-                            data[1], data[2], data[3], data[4], data[5]);
-    if (returnCode < 1)
-    {
-        LOGF_ERROR("Failed to parse JSONData '%s'.", lresponse);
-        return false;
-    }
-    strncpy(jstr, data[jindex], jstrlen);
-    return true;
-}
-
-bool LX200Skywalker::MountLocked()
-{
-    char lstat[20] = {0};
-    if(!getJSONData_gp(2, lstat, 20))
-        return false;
-    else
-    {
-        int li = std::stoi(lstat);
-        if (li > 0)
-            return true;
-        else
-            return false;
-    }
 }
 
 bool LX200Skywalker::SetMountLock(bool enable)
@@ -848,43 +788,6 @@ bool LX200Skywalker::SetMountLock(bool enable)
     else
         LOGF_INFO("Lock is %s.", enable ? "enabled" : "disabled");
     return retval;
-}
-
-bool LX200Skywalker::SyncDefaultPark() // Saved mount position is loaded and synced
-{
-    double parkAZ  = GetAxis1Park();
-    double parkAlt = GetAxis2Park();
-
-    char AzStr[16], AltStr[16];
-    fs_sexa(AzStr, parkAZ, 2, 3600);
-    fs_sexa(AltStr, parkAlt, 2, 3600);
-    LOGF_DEBUG("Unparking from Az (%s) Alt (%s)...", AzStr, AltStr);
-
-    ln_hrz_posn horizontalPos;
-    // Libnova south = 0, west = 90, north = 180, east = 270
-    horizontalPos.az = parkAZ + 180;
-    if (horizontalPos.az >= 360)
-        horizontalPos.az -= 360;
-    horizontalPos.alt = parkAlt;
-
-    ln_lnlat_posn observer;
-
-    observer.lat = LocationN[LOCATION_LATITUDE].value;
-    observer.lng = LocationN[LOCATION_LONGITUDE].value;
-
-    if (observer.lng > 180)
-        observer.lng -= 360;
-
-    ln_equ_posn equatorialPos;
-
-    ln_get_equ_from_hrz(&horizontalPos, &observer, ln_get_julian_from_sys(), &equatorialPos);
-
-    char RAStr[16], DEStr[16];
-    fs_sexa(RAStr, equatorialPos.ra / 15.0, 2, 3600);
-    fs_sexa(DEStr, equatorialPos.dec, 2, 3600);
-    LOGF_DEBUG("Syncing to parked coordinates RA (%s) DEC (%s)...", RAStr, DEStr);
-
-    return (Sync(equatorialPos.ra / 15.0, equatorialPos.dec));
 }
 
 bool LX200Skywalker::SetCurrentPark() // Current mount position is copied into park position fields
@@ -925,11 +828,6 @@ bool LX200Skywalker::SetDefaultPark() // Saved mount position is copied into par
     return INDI::Telescope::InitPark();
 }
 
-/**
- * @brief Determine the system slew speed mode
- * @param xx
- * @return true iff request succeeded
- */
 bool LX200Skywalker::getSystemSlewSpeed (int *xx)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -977,132 +875,6 @@ bool LX200Skywalker::setSystemSlewSpeed (int xx)
 
 }
 
-/**
- * @brief Retrieve the firmware info from the mount
- * @param firmwareInfo - firmware description
- * @return
- */
-bool LX200Skywalker::getFirmwareInfo(char* vstring)
-{
-    char lstat[40] = {0};
-    if(!getJSONData_gp(1, lstat, 40))
-        return false;
-    else
-    {
-        strcpy(vstring, lstat);
-        return true;
-    }
-}
-
-/*********************************************************************************
- * Helper functions
- *********************************************************************************/
-
-
-/**
- * @brief Receive answer from the communication port.
- * @param buffer - buffer holding the answer
- * @param bytes - number of bytes contained in the answer
- * @author CanisUrsa
- * @return true if communication succeeded, false otherwise
- */
-bool LX200Skywalker::receive(char* buffer, char end, int wait)
-{
-    //    LOGF_DEBUG("%s timeout=%ds",__FUNCTION__, wait);
-    int bytes = 0;
-    int timeout = wait;
-    int returnCode = tty_read_section(PortFD, buffer, end, timeout, &bytes);
-    if (returnCode != TTY_OK && (bytes < 1))
-    {
-        char errorString[MAXRBUF];
-        tty_error_msg(returnCode, errorString, MAXRBUF);
-        if(returnCode == TTY_TIME_OUT && wait <= 0) return false;
-        LOGF_WARN("Failed to receive full response: %s. (Return code: %d)", errorString, returnCode);
-        return false;
-    }
-    if(buffer[bytes - 1] == '#')
-        buffer[bytes - 1] = '\0'; // remove #
-    else
-        buffer[bytes] = '\0';
-
-    return true;
-}
-
-/**
- * @brief Flush the communication port.
- * @author CanisUrsa
- */
-void LX200Skywalker::flush()
-{
-    //LOG_DEBUG(__FUNCTION__);
-    //tcflush(PortFD, TCIOFLUSH);
-}
-
-bool LX200Skywalker::transmit(const char* buffer)
-{
-    //    LOG_DEBUG(__FUNCTION__);
-    int bytesWritten = 0;
-    flush();
-    int returnCode = tty_write_string(PortFD, buffer, &bytesWritten);
-    if (returnCode != TTY_OK)
-    {
-        char errorString[MAXRBUF];
-        tty_error_msg(returnCode, errorString, MAXRBUF);
-        LOGF_WARN("Failed to transmit %s. Wrote %d bytes and got error %s.", buffer, bytesWritten, errorString);
-        return false;
-    }
-    return true;
-}
-
-bool LX200Skywalker::checkLX200EquatorialFormat()
-{
-    LOG_DEBUG(__FUNCTION__);
-    char response[TCS_RESPONSE_BUFFER_LENGTH];
-
-    controller_format = LX200_LONG_FORMAT;
-
-    if (!sendQuery(":GR#", response))
-    {
-        LOG_ERROR("Failed to get RA for format check");
-        return false;
-    }
-    /* If it's short format, try to toggle to high precision format */
-    if (strlen(response) <= 5 || response[5] == '.')
-    {
-        LOG_INFO("Detected low precision format, "
-                 "attempting to switch to high precision.");
-        if (!sendQuery(":U#", response, 0))
-        {
-            LOG_ERROR("Failed to switch precision");
-            return false;
-        }
-        if (!sendQuery(":GR#", response))
-        {
-            LOG_ERROR("Failed to get high precision RA");
-            return false;
-        }
-    }
-    if (strlen(response) <= 5 || response[5] == '.')
-    {
-        controller_format = LX200_SHORT_FORMAT;
-        LOG_INFO("Coordinate format is low precision.");
-        return 0;
-
-    }
-    else if (strlen(response) > 8 && response[8] == '.')
-    {
-        controller_format = LX200_LONGER_FORMAT;
-        LOG_INFO("Coordinate format is ultra high precision.");
-        return 0;
-    }
-    else
-    {
-        controller_format = LX200_LONG_FORMAT;
-        LOG_INFO("Coordinate format is high precision.");
-        return 0;
-    }
-}
-
 bool LX200Skywalker::SetSlewRate(int index)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -1120,6 +892,7 @@ bool LX200Skywalker::SetSlewRate(int index)
     IDSetSwitch(&SlewRateSP, nullptr);
     return true;
 }
+
 bool LX200Skywalker::setSlewMode(int slewMode)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -1146,76 +919,30 @@ bool LX200Skywalker::setSlewMode(int slewMode)
     return (sendQuery(cmd, response, 0)); // Don't wait for response - there isn't one
 }
 
-IPState LX200Skywalker::GuideNorth(uint32_t ms)
+bool LX200Skywalker::setObjectCoords(double ra, double dec)
 {
-    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
-    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
-    {
-        LOG_ERROR("Cannot guide while moving.");
-        return IPS_ALERT;
-    }
-    return SendPulseCmd(LX200_NORTH, ms) ? IPS_OK : IPS_ALERT;
-}
+    LOG_DEBUG(__FUNCTION__);
 
-IPState LX200Skywalker::GuideSouth(uint32_t ms)
-{
-    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
-    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
-    {
-        LOG_ERROR("Cannot guide while moving.");
-        return IPS_ALERT;
-    }
-    return SendPulseCmd(LX200_SOUTH, ms) ? IPS_OK : IPS_ALERT;
-}
-
-IPState LX200Skywalker::GuideEast(uint32_t ms)
-{
-    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
-    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
-    {
-        LOG_ERROR("Cannot guide while moving.");
-        return IPS_ALERT;
-    }
-    return SendPulseCmd(LX200_EAST, ms) ? IPS_OK : IPS_ALERT;
-}
-
-IPState LX200Skywalker::GuideWest(uint32_t ms)
-{
-    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
-    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
-    {
-        LOG_ERROR("Cannot guide while moving.");
-        return IPS_ALERT;
-    }
-    return SendPulseCmd(LX200_WEST, ms) ? IPS_OK : IPS_ALERT;
-}
-
-int LX200Skywalker::SendPulseCmd(int8_t direction, uint32_t duration_msec)
-{
-    LOGF_DEBUG("%s dir=%d dur=%d ms", __FUNCTION__, direction, duration_msec );
-    char cmd[TCS_COMMAND_BUFFER_LENGTH];
+    char RAStr[64] = {0}, DecStr[64] = {0};
+    int h, m, s, d;
+    getSexComponents(ra, &h, &m, &s);
+    snprintf(RAStr, sizeof(RAStr), ":Sr%02d:%02d:%02d#", h, m, s);
+    getSexComponents(dec, &d, &m, &s);
+    /* case with negative zero */
+    if (!d && dec < 0)
+        snprintf(DecStr, sizeof(DecStr), ":Sd-%02d*%02d:%02d#", d, m, s);
+    else
+        snprintf(DecStr, sizeof(DecStr), ":Sd%+03d*%02d:%02d#", d, m, s);
     char response[TCS_RESPONSE_BUFFER_LENGTH];
-    switch (direction)
+    if (isSimulation()) return true;
+    // These commands receive a response without a terminating #
+    if(!sendQuery(RAStr, response, '1', 2)  || !sendQuery(DecStr, response, '1', 2) )
     {
-        case LX200_NORTH:
-            sprintf(cmd, ":Mgn%04u#", duration_msec);
-            break;
-        case LX200_SOUTH:
-            sprintf(cmd, ":Mgs%04u#", duration_msec);
-            break;
-        case LX200_EAST:
-            sprintf(cmd, ":Mge%04u#", duration_msec);
-            break;
-        case LX200_WEST:
-            sprintf(cmd, ":Mgw%04u#", duration_msec);
-            break;
-        default:
-            return 1;
-    }
-    if (!sendQuery(cmd, response, 0)) // Don't wait for response - there isn't one
-    {
+        EqNP.s = IPS_ALERT;
+        IDSetNumber(&EqNP, "Error setting RA/DEC.");
         return false;
     }
+
     return true;
 }
 
@@ -1270,52 +997,28 @@ bool LX200Skywalker::SetTrackRate(double raRate, double deRate)
     return true;
 }
 
-void LX200Skywalker::ISGetProperties(const char *dev)
+bool LX200Skywalker::getTrackFrequency(double *value)
 {
-    if (dev != nullptr && strcmp(dev, getDeviceName()) != 0)
-        return;
+    LOG_DEBUG(__FUNCTION__);
+    float Freq;
+    char response[RB_MAX_LEN] = {0};
 
-    LX200Telescope::ISGetProperties(dev);
-    if (isConnected())
+    if (!sendQuery(":GT#", response))
+        return false;
+
+    if (sscanf(response, "%f#", &Freq) < 1)
     {
-        if (HasTrackMode() && TrackModeS != nullptr)
-            defineProperty(&TrackModeSP);
-        if (CanControlTrack())
-            defineProperty(&TrackStateSP);
-        if (HasTrackRate())
-            defineProperty(&TrackRateNP);
+        LOG_ERROR("Unable to parse response");
+        return false;
     }
-    /*
-        if (isConnected())
-        {
-            if (genericCapability & LX200_HAS_ALIGNMENT_TYPE)
-                defineProperty(&AlignmentSP);
 
-            if (genericCapability & LX200_HAS_TRACKING_FREQ)
-                defineProperty(&TrackingFreqNP);
-
-            if (genericCapability & LX200_HAS_PULSE_GUIDING)
-                defineProperty(&UsePulseCmdSP);
-
-            if (genericCapability & LX200_HAS_SITES)
-            {
-                defineProperty(&SiteSP);
-                defineProperty(&SiteNameTP);
-            }
-
-            defineProperty(&GuideNSNP);
-            defineProperty(&GuideWENP);
-
-            if (genericCapability & LX200_HAS_FOCUS)
-            {
-                defineProperty(&FocusMotionSP);
-                defineProperty(&FocusTimerNP);
-                defineProperty(&FocusModeSP);
-            }
-        }
-        */
+    *value = static_cast<double>(Freq);
+    return true;
 }
 
+/*********************************************************************************
+ * Control
+ *********************************************************************************/
 bool LX200Skywalker::Goto(double ra, double dec)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -1416,45 +1119,6 @@ bool LX200Skywalker::MoveWE(INDI_DIR_WE dir, TelescopeMotionCommand command)
     return true;
 }
 
-bool LX200Skywalker::Abort()
-{
-    LOG_DEBUG(__FUNCTION__);
-    //   char cmd[TCS_COMMAND_BUFFER_LENGTH];
-    char response[TCS_RESPONSE_BUFFER_LENGTH];
-    if (!isSimulation() && !sendQuery(":Q#", response, 0))
-    {
-        LOG_ERROR("Failed to abort slew.");
-        return false;
-    }
-
-    if (GuideNSNP.s == IPS_BUSY || GuideWENP.s == IPS_BUSY)
-    {
-        GuideNSNP.s = GuideWENP.s = IPS_IDLE;
-        GuideNSN[0].value = GuideNSN[1].value = 0.0;
-        GuideWEN[0].value = GuideWEN[1].value = 0.0;
-
-        if (GuideNSTID)
-        {
-            IERmTimer(GuideNSTID);
-            GuideNSTID = 0;
-        }
-
-        if (GuideWETID)
-        {
-            IERmTimer(GuideWETID);
-            GuideNSTID = 0;
-        }
-
-        LOG_INFO("Guide aborted.");
-        IDSetNumber(&GuideNSNP, nullptr);
-        IDSetNumber(&GuideWENP, nullptr);
-
-        return true;
-    }
-
-    return true;
-}
-
 bool LX200Skywalker::Sync(double ra, double dec)
 {
     LOG_DEBUG(__FUNCTION__);
@@ -1533,89 +1197,363 @@ bool LX200Skywalker::Sync(double ra, double dec)
     return true;
 }
 
-
-bool LX200Skywalker::setObjectCoords(double ra, double dec)
+bool LX200Skywalker::Park()
 {
-    LOG_DEBUG(__FUNCTION__);
-
-    char RAStr[64] = {0}, DecStr[64] = {0};
-    int h, m, s, d;
-    getSexComponents(ra, &h, &m, &s);
-    snprintf(RAStr, sizeof(RAStr), ":Sr%02d:%02d:%02d#", h, m, s);
-    getSexComponents(dec, &d, &m, &s);
-    /* case with negative zero */
-    if (!d && dec < 0)
-        snprintf(DecStr, sizeof(DecStr), ":Sd-%02d*%02d:%02d#", d, m, s);
+    if (INDI::Telescope::TrackState == SCOPE_PARKED)  // already parked
+    {
+        // Important: SetParked() invokes WriteParkData() which saves state and position
+        // in ParkData.XML (this means parkstate will be overwritten with true)
+        INDI::Telescope::SetParked(true);
+        return true;
+    }
     else
-        snprintf(DecStr, sizeof(DecStr), ":Sd%+03d*%02d:%02d#", d, m, s);
+        return (LX200Telescope::Park());
+}
+
+bool LX200Skywalker::UnPark()
+{
     char response[TCS_RESPONSE_BUFFER_LENGTH];
-    if (isSimulation()) return true;
-    // These commands receive a response without a terminating #
-    if(!sendQuery(RAStr, response, '1', 2)  || !sendQuery(DecStr, response, '1', 2) )
+    if (sendQuery(":hW#", response, TCS_NOANSWER))
     {
-        EqNP.s = IPS_ALERT;
-        IDSetNumber(&EqNP, "Error setting RA/DEC.");
+        // Important: SetParked() invokes WriteParkData() which saves state and position
+        // in ParkData.XML (this means parkstate is overwritten with false!)
+        INDI::Telescope::SetParked(false);
+        if ((MountLocked()) && (MountTracking())) // TCS sets Mountlock & Tracking
+        {
+            notifyMountLock(true);
+            // INDI::Telescope::SetParked(false) sets TrackState = SCOPE_IDLE but TCS is tracking
+            notifyTrackState(SCOPE_TRACKING);
+            // INDI::Telescope::SetParked(false) sets ParkSP.S = IPS_IDLE but mount IS unparked!
+            ParkSP.s = IPS_OK;
+            IDSetSwitch(&ParkSP, nullptr);
+            return SyncDefaultPark();
+        }
+        else
+            return false;
+    }
+    else
         return false;
+}
+
+bool LX200Skywalker::SavePark()
+{
+    char response[TCS_RESPONSE_BUFFER_LENGTH];
+    if (sendQuery(":SP#", response, TCS_NOANSWER))  // Controller sets parkposition and reboots
+        return true;
+    else
+    {
+        LOG_ERROR("Controller did not accept 'SetPark'.");
+        return false;
+    }
+}
+
+bool LX200Skywalker::SyncDefaultPark() // Saved mount position is loaded and synced
+{
+    double parkAZ  = GetAxis1Park();
+    double parkAlt = GetAxis2Park();
+
+    char AzStr[16], AltStr[16];
+    fs_sexa(AzStr, parkAZ, 2, 3600);
+    fs_sexa(AltStr, parkAlt, 2, 3600);
+    LOGF_DEBUG("Unparking from Az (%s) Alt (%s)...", AzStr, AltStr);
+
+    ln_hrz_posn horizontalPos;
+    // Libnova south = 0, west = 90, north = 180, east = 270
+    horizontalPos.az = parkAZ + 180;
+    if (horizontalPos.az >= 360)
+        horizontalPos.az -= 360;
+    horizontalPos.alt = parkAlt;
+
+    ln_lnlat_posn observer;
+
+    observer.lat = LocationN[LOCATION_LATITUDE].value;
+    observer.lng = LocationN[LOCATION_LONGITUDE].value;
+
+    if (observer.lng > 180)
+        observer.lng -= 360;
+
+    ln_equ_posn equatorialPos;
+
+    ln_get_equ_from_hrz(&horizontalPos, &observer, ln_get_julian_from_sys(), &equatorialPos);
+
+    char RAStr[16], DEStr[16];
+    fs_sexa(RAStr, equatorialPos.ra / 15.0, 2, 3600);
+    fs_sexa(DEStr, equatorialPos.dec, 2, 3600);
+    LOGF_DEBUG("Syncing to parked coordinates RA (%s) DEC (%s)...", RAStr, DEStr);
+
+    return (Sync(equatorialPos.ra / 15.0, equatorialPos.dec));
+}
+
+bool LX200Skywalker::Abort()
+{
+    LOG_DEBUG(__FUNCTION__);
+    //   char cmd[TCS_COMMAND_BUFFER_LENGTH];
+    char response[TCS_RESPONSE_BUFFER_LENGTH];
+    if (!isSimulation() && !sendQuery(":Q#", response, 0))
+    {
+        LOG_ERROR("Failed to abort slew.");
+        return false;
+    }
+
+    if (GuideNSNP.s == IPS_BUSY || GuideWENP.s == IPS_BUSY)
+    {
+        GuideNSNP.s = GuideWENP.s = IPS_IDLE;
+        GuideNSN[0].value = GuideNSN[1].value = 0.0;
+        GuideWEN[0].value = GuideWEN[1].value = 0.0;
+
+        if (GuideNSTID)
+        {
+            IERmTimer(GuideNSTID);
+            GuideNSTID = 0;
+        }
+
+        if (GuideWETID)
+        {
+            IERmTimer(GuideWETID);
+            GuideNSTID = 0;
+        }
+
+        LOG_INFO("Guide aborted.");
+        IDSetNumber(&GuideNSNP, nullptr);
+        IDSetNumber(&GuideWENP, nullptr);
+
+        return true;
     }
 
     return true;
 }
 
-bool LX200Skywalker::setLocalDate(uint8_t days, uint8_t months, uint16_t years)
+/*********************************************************************************
+ * Guiding
+ *********************************************************************************/
+IPState LX200Skywalker::GuideNorth(uint32_t ms)
 {
-    LOG_DEBUG(__FUNCTION__);
-    char cmd[RB_MAX_LEN] = {0};
-    char response[RB_MAX_LEN] = {0};
-
-    int yy = years % 100;
-
-    snprintf(cmd, sizeof(cmd), ":SC%02d/%02d/%02d#", months, days, yy);
-    // Correct command string without spaces and with slashes (wrong in lx200driver of INDIcore!)
-    // ":SCMM/DD/YY#" (cf. Meade Telescope Serial Command Protocol; Revision 2010.10)
-    return (sendQuery(cmd, response, 0));
-}
-
-bool LX200Skywalker::setLocalTime24(uint8_t hour, uint8_t minute, uint8_t second)
-{
-    LOG_DEBUG(__FUNCTION__);
-    char cmd[RB_MAX_LEN] = {0};
-    char response[RB_MAX_LEN] = {0};
-
-    snprintf(cmd, sizeof(cmd), ":SL%02d:%02d:%02d#", hour, minute, second);
-    // Correct command string without spaces (wrong in lx200driver of INDIcore!)
-    // ":SLHH:MM:SS#" (cf. Meade Telescope Serial Command Protocol; Revision 2010.10)
-    return (sendQuery(cmd, response, 0));
-}
-
-bool LX200Skywalker::setUTCOffset(double offset)
-{
-    LOG_DEBUG(__FUNCTION__);
-    char cmd[RB_MAX_LEN] = {0};
-    char response[RB_MAX_LEN] = {0};
-    int hours = offset * -1.0;
-
-    snprintf(cmd, sizeof(cmd), ":SG%+03d#", hours);
-    // Correct command string without spaces (wrong in lx200driver of INDIcore!)
-    // ":SGsHH.H#" (cf. Meade Telescope Serial Command Protocol; Revision 2010.10)
-    return (sendQuery(cmd, response, 0));
-}
-
-bool LX200Skywalker::getTrackFrequency(double *value)
-{
-    LOG_DEBUG(__FUNCTION__);
-    float Freq;
-    char response[RB_MAX_LEN] = {0};
-
-    if (!sendQuery(":GT#", response))
-        return false;
-
-    if (sscanf(response, "%f#", &Freq) < 1)
+    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
+    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
     {
-        LOG_ERROR("Unable to parse response");
+        LOG_ERROR("Cannot guide while moving.");
+        return IPS_ALERT;
+    }
+    return SendPulseCmd(LX200_NORTH, ms) ? IPS_OK : IPS_ALERT;
+}
+
+IPState LX200Skywalker::GuideSouth(uint32_t ms)
+{
+    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
+    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
+    {
+        LOG_ERROR("Cannot guide while moving.");
+        return IPS_ALERT;
+    }
+    return SendPulseCmd(LX200_SOUTH, ms) ? IPS_OK : IPS_ALERT;
+}
+
+IPState LX200Skywalker::GuideEast(uint32_t ms)
+{
+    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
+    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
+    {
+        LOG_ERROR("Cannot guide while moving.");
+        return IPS_ALERT;
+    }
+    return SendPulseCmd(LX200_EAST, ms) ? IPS_OK : IPS_ALERT;
+}
+
+IPState LX200Skywalker::GuideWest(uint32_t ms)
+{
+    LOGF_DEBUG("%s %dms", __FUNCTION__, ms);
+    if (MovementNSSP.s == IPS_BUSY || MovementWESP.s == IPS_BUSY)
+    {
+        LOG_ERROR("Cannot guide while moving.");
+        return IPS_ALERT;
+    }
+    return SendPulseCmd(LX200_WEST, ms) ? IPS_OK : IPS_ALERT;
+}
+
+int LX200Skywalker::SendPulseCmd(int8_t direction, uint32_t duration_msec)
+{
+    LOGF_DEBUG("%s dir=%d dur=%d ms", __FUNCTION__, direction, duration_msec );
+    char cmd[TCS_COMMAND_BUFFER_LENGTH];
+    char response[TCS_RESPONSE_BUFFER_LENGTH];
+    switch (direction)
+    {
+        case LX200_NORTH:
+            sprintf(cmd, ":Mgn%04u#", duration_msec);
+            break;
+        case LX200_SOUTH:
+            sprintf(cmd, ":Mgs%04u#", duration_msec);
+            break;
+        case LX200_EAST:
+            sprintf(cmd, ":Mge%04u#", duration_msec);
+            break;
+        case LX200_WEST:
+            sprintf(cmd, ":Mgw%04u#", duration_msec);
+            break;
+        default:
+            return 1;
+    }
+    if (!sendQuery(cmd, response, 0)) // Don't wait for response - there isn't one
+    {
         return false;
     }
-
-    *value = static_cast<double>(Freq);
     return true;
 }
 
+/*********************************************************************************
+ * Helper functions
+ *********************************************************************************/
+bool LX200Skywalker::getFirmwareInfo(char* vstring)
+{
+    char lstat[40] = {0};
+    if(!getJSONData_gp(1, lstat, 40))
+        return false;
+    else
+    {
+        strcpy(vstring, lstat);
+        return true;
+    }
+}
+
+bool LX200Skywalker::MountLocked()
+{
+    char lstat[20] = {0};
+    if(!getJSONData_gp(2, lstat, 20))
+        return false;
+    else
+    {
+        int li = std::stoi(lstat);
+        if (li > 0)
+            return true;
+        else
+            return false;
+    }
+}
+
+void LX200Skywalker::flush()
+{
+    //LOG_DEBUG(__FUNCTION__);
+    //tcflush(PortFD, TCIOFLUSH);
+}
+
+bool LX200Skywalker::getJSONData_gp(int jindex, char *jstr, int jstrlen) // preliminary hardcoded  :gp-query
+{
+    char lresponse[128];
+    lresponse [0] = '\0';
+    char lcmd[4] = ":gp";
+    char end = '}';
+    if(!transmit(lcmd))
+    {
+        LOGF_ERROR("Command <%s> not transmitted.", lcmd);
+    }
+    if (receive(lresponse, end, 1))
+    {
+        flush();
+    }
+    else
+    {
+        LOG_ERROR("Failed to get JSONData");
+        return false;
+    }
+    char data[3][40] = {"", "", ""};
+    int returnCode = sscanf(lresponse, "%*[^[][%40[^\"]%40[^,]%*[,]%40[^]]", data[0], data[1], data[2]);
+    if (returnCode < 1)
+    {
+        LOGF_ERROR("Failed to parse JSONData '%s'.", lresponse);
+        return false;
+    }
+    strncpy(jstr, data[jindex], jstrlen);
+    return true;
+}
+
+bool LX200Skywalker::getJSONData_Y(int jindex, char *jstr, int jstrlen) // preliminary hardcoded query :Y#-query
+{
+    char lresponse[128];
+    lresponse [0] = '\0';
+    char lcmd[4] = ":Y#";
+    char end = '}';
+    if(!transmit(lcmd))
+    {
+        LOGF_ERROR("Command <%s> not transmitted.", lcmd);
+    }
+    if (receive(lresponse, end, 1))
+    {
+        flush();
+    }
+    else
+    {
+        LOG_ERROR("Failed to get JSONData");
+        return false;
+    }
+    char data[6][20] = {"", "", "", "", "", ""};
+    int returnCode = sscanf(lresponse, "%20[^,]%*[,]%20[^,]%*[,]%20[^#]%*[#\",]%20[^,]%*[,]%20[^,]%*[,]%20[^,]", data[0],
+                            data[1], data[2], data[3], data[4], data[5]);
+    if (returnCode < 1)
+    {
+        LOGF_ERROR("Failed to parse JSONData '%s'.", lresponse);
+        return false;
+    }
+    strncpy(jstr, data[jindex], jstrlen);
+    return true;
+}
+
+bool LX200Skywalker::sendQuery(const char* cmd, char* response, char end, int wait)
+{
+    LOGF_DEBUG("%s %s End:%c Wait:%ds", __FUNCTION__, cmd, end, wait);
+    response[0] = '\0';
+    char lresponse[TCS_RESPONSE_BUFFER_LENGTH];
+    lresponse [0] = '\0';
+    bool lresult = false;
+    if(!transmit(cmd))
+    {
+        LOGF_ERROR("Command <%s> not transmitted.", cmd);
+    }
+    else if (wait > TCS_NOANSWER)
+    {
+        if (receive(lresponse, end, wait))
+        {
+            strcpy(response, lresponse);
+            return true;
+        }
+    }
+    else
+        lresult = true;
+    return lresult;
+}
+
+bool LX200Skywalker::transmit(const char* buffer)
+{
+    //    LOG_DEBUG(__FUNCTION__);
+    int bytesWritten = 0;
+    flush();
+    int returnCode = tty_write_string(PortFD, buffer, &bytesWritten);
+    if (returnCode != TTY_OK)
+    {
+        char errorString[MAXRBUF];
+        tty_error_msg(returnCode, errorString, MAXRBUF);
+        LOGF_WARN("Failed to transmit %s. Wrote %d bytes and got error %s.", buffer, bytesWritten, errorString);
+        return false;
+    }
+    return true;
+}
+
+bool LX200Skywalker::receive(char* buffer, char end, int wait)
+{
+    //    LOGF_DEBUG("%s timeout=%ds",__FUNCTION__, wait);
+    int bytes = 0;
+    int timeout = wait;
+    int returnCode = tty_read_section(PortFD, buffer, end, timeout, &bytes);
+    if (returnCode != TTY_OK && (bytes < 1))
+    {
+        char errorString[MAXRBUF];
+        tty_error_msg(returnCode, errorString, MAXRBUF);
+        if(returnCode == TTY_TIME_OUT && wait <= 0) return false;
+        LOGF_WARN("Failed to receive full response: %s. (Return code: %d)", errorString, returnCode);
+        return false;
+    }
+    if(buffer[bytes - 1] == '#')
+        buffer[bytes - 1] = '\0'; // remove #
+    else
+        buffer[bytes] = '\0';
+
+    return true;
+}
