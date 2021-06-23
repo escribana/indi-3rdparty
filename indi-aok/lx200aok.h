@@ -31,13 +31,15 @@
 
 #include <cstring>
 #include <string>
+// #include <regex> --> std::map
 #include <unistd.h>
 
-#define LX200_TIMEOUT                                 5 /* FD timeout in seconds */
+//#define LX200_TIMEOUT                               5 /* FD timeout in seconds */
 #define RB_MAX_LEN                                   64
 #define TCS_TIMEOUT                                   1 /* 50ms? */
 #define TCS_COMMAND_BUFFER_LENGTH                    32
 #define TCS_RESPONSE_BUFFER_LENGTH                   32
+#define TCS_JSON_BUFFER_LENGTH                      128
 #define TCS_NOANSWER                                  0
 
 enum TDirection
@@ -113,7 +115,7 @@ class LX200Skywalker : public LX200Telescope
         virtual bool updateLocation(double latitude, double longitude, double elevation) override;
         virtual bool saveConfigItems(FILE *fp) override;
         bool checkLX200EquatorialFormat();
-        bool notifyPierSide();
+        void notifyPierSide(bool west);
         void notifyMountLock(bool locked);
         void notifyTrackState(INDI::Telescope::TelescopeStatus state);
         virtual bool setLocalDate(uint8_t days, uint8_t months, uint16_t years) override;
@@ -151,11 +153,42 @@ class LX200Skywalker : public LX200Telescope
 
     private:
         // helper functions
+        enum class val : uint8_t // scoped enumeration of all JSON-parametervalues "val" (answer to ':gp')
+                {
+                    maxspeed,   // max slewspeed (encoded)
+                    Rlp,        // motorforce x (for EQ: rightascension)
+                    rb3,        // stiffness x
+                    Dlp,        // motorforce y (for EQ: declination)
+                    db3,        // stiffness y
+                    IP1,        // IP address
+                    IP2,
+                    IP3,
+                    IP4,
+                    mask,       // IP mask
+                    port,       // IP port
+                    version,    // FW versionidentifier (EQ: equatorial, AA: horizontal, ...)
+                    lock,       // motorlock
+                    count
+                };
+
+                enum class V1 : uint8_t // scoped enumeration of - so far - required JSON-parametervalues "V1" (answer to ':Y#')
+                {
+                    posX,       // motorposition x
+                    posY,       // motorposition y
+                    stime,      // startime
+                    ubatt,      // voltage (encoded)
+                    db2,        // motorparameter
+                    gstate,     // devicestatus (PierSide encoded)
+                    bstate,     // busstatus
+                    count
+                };
+
+                // std::map<std::string, std::string> JSONtopic{ {":gp", "\"val\""}, {":Y#", "\"V1\""} };
+
         bool getFirmwareInfo(char* vstring);
         bool MountLocked();
-        virtual void flush();
-        bool getJSONData_gp(int jindex, char *jstr, int jstrlen);
-        bool getJSONData_Y(int jindex, char *jstr, int jstrlen);
+        bool PierSideWest();
+        bool getJSONData(const char* cmd, const uint8_t tok_index, char *data);
         // queries to the scope interface. Wait for specified end character
         // Unfortunately wait is only defined in seconds in tty_read -> tty_timout
         bool sendQuery(const char* cmd, char* response, char end, int wait = TCS_TIMEOUT);

@@ -85,7 +85,7 @@ const char *LX200Skywalker::getDefaultName()
 //**************************************************************************************
 bool LX200Skywalker::Handshake()
 {
-    char fwinfo[64] = {0}; // 64 for strcpy
+    char fwinfo[TCS_JSON_BUFFER_LENGTH] = {0};
     if (!getFirmwareInfo(fwinfo))
     {
         LOG_ERROR("Communication with telescope failed");
@@ -600,7 +600,8 @@ bool LX200Skywalker::isSlewComplete()
             if (TrackState == SCOPE_SLEWING)
             {
                 notifyTrackState(SCOPE_TRACKING);
-                if ((notifyPierSide()) && (MountLocked())) // Normally lock is set by TCS if slew ends
+                notifyPierSide(PierSideWest());
+                if (MountLocked()) // Normally lock is set by TCS if slew ends
                 {
                     notifyMountLock(true);
                     result = true;
@@ -626,25 +627,17 @@ bool LX200Skywalker::isSlewComplete()
 
 // Following items were changed from original "set_" to "notify_" because of the logic behind: From
 // the controller view we change the viewer (and a copy of the model), not the the model itself!
-bool LX200Skywalker::notifyPierSide()
+void LX200Skywalker::notifyPierSide(bool west)
 {
-    char lstat[20] = {0};
-    if (getJSONData_Y(5, lstat, 20)) // this is the model!
+    if (west)
     {
-        int li = std::stoi(lstat);
-        li = li & (1 << 7);
-        if (li > 0)
-            Telescope::setPierSide(INDI::Telescope::PIER_WEST);
-        else
-            Telescope::setPierSide(INDI::Telescope::PIER_EAST);
-        LOGF_INFO("Telescope pointing %s", (li > 0) ? "east" : "west");
-        return true;
+        Telescope::setPierSide(INDI::Telescope::PIER_WEST);
+        LOG_INFO("Telescope pointing west");
     }
     else
     {
-        Telescope::setPierSide(INDI::Telescope::PIER_UNKNOWN);
-        LOG_ERROR("Telescope pointing unknown!");
-        return false;
+        Telescope::setPierSide(INDI::Telescope::PIER_EAST);
+        LOG_INFO("Telescope pointing east");
     }
 }
 
@@ -1146,8 +1139,7 @@ bool LX200Skywalker::Sync(double ra, double dec)
 
     NewRaDec(currentRA, currentDEC);
 
-    if (!notifyPierSide())
-        return false;
+    notifyPierSide(PierSideWest());
     // show lock
     if (MountLocked()) // Normally lock is set by TCS on syncing
     {
@@ -1402,10 +1394,17 @@ int LX200Skywalker::SendPulseCmd(int8_t direction, uint32_t duration_msec)
 /*********************************************************************************
  * Helper functions
  *********************************************************************************/
+// static_cast<type>(enum::element)
+template <typename T>
+constexpr typename std::underlying_type<T>::type index_of(T element) noexcept
+{
+    return static_cast<typename std::underlying_type<T>::type>(element);
+}
+
 bool LX200Skywalker::getFirmwareInfo(char* vstring)
 {
-    char lstat[40] = {0};
-    if(!getJSONData_gp(1, lstat, 40))
+    char lstat[TCS_JSON_BUFFER_LENGTH] = {0};
+    if(!getJSONData(":gp", index_of(val::version), lstat))
         return false;
     else
     {
@@ -1417,7 +1416,7 @@ bool LX200Skywalker::getFirmwareInfo(char* vstring)
 bool LX200Skywalker::MountLocked()
 {
     char lstat[20] = {0};
-    if(!getJSONData_gp(2, lstat, 20))
+    if(!getJSONData(":gp", index_of(val::lock), lstat))
         return false;
     else
     {
@@ -1429,70 +1428,45 @@ bool LX200Skywalker::MountLocked()
     }
 }
 
-void LX200Skywalker::flush()
+bool LX200Skywalker::PierSideWest()
 {
-    //LOG_DEBUG(__FUNCTION__);
-    //tcflush(PortFD, TCIOFLUSH);
-}
-
-bool LX200Skywalker::getJSONData_gp(int jindex, char *jstr, int jstrlen) // preliminary hardcoded  :gp-query
-{
-    char lresponse[128];
-    lresponse [0] = '\0';
-    char lcmd[4] = ":gp";
-    char end = '}';
-    if(!transmit(lcmd))
-    {
-        LOGF_ERROR("Command <%s> not transmitted.", lcmd);
-    }
-    if (receive(lresponse, end, 1))
-    {
-        flush();
-    }
+    char lstat[20] = {0};
+    if (!getJSONData(":Y#", index_of(V1::gstate), lstat))
+        return false;
     else
     {
-        LOG_ERROR("Failed to get JSONData");
-        return false;
+        int li = std::stoi(lstat);
+        li = li & (1 << 7);
+        if (li > 0)
+            return true;
+        else
+            return false;
     }
-    char data[3][40] = {"", "", ""};
-    int returnCode = sscanf(lresponse, "%*[^[][%40[^\"]%40[^,]%*[,]%40[^]]", data[0], data[1], data[2]);
-    if (returnCode < 1)
-    {
-        LOGF_ERROR("Failed to parse JSONData '%s'.", lresponse);
-        return false;
-    }
-    strncpy(jstr, data[jindex], jstrlen);
-    return true;
 }
 
-bool LX200Skywalker::getJSONData_Y(int jindex, char *jstr, int jstrlen) // preliminary hardcoded query :Y#-query
+bool LX200Skywalker::getJSONData(const char* cmd, const uint8_t tok_index, char* data)
 {
-    char lresponse[128];
+    char lresponse[TCS_JSON_BUFFER_LENGTH];
     lresponse [0] = '\0';
-    char lcmd[4] = ":Y#";
     char end = '}';
-    if(!transmit(lcmd))
+    if(!transmit(cmd))
+        return false;
+    if (!receive(lresponse, end, 1))
+        return false;
+    const char delimiter[] = ",";
+    char* token;
+    uint8_t i = 0;
+    token = strtok(lresponse, delimiter);
+    while (++i <= tok_index)
     {
-        LOGF_ERROR("Command <%s> not transmitted.", lcmd);
+        token = strtok(nullptr, delimiter);
     }
-    if (receive(lresponse, end, 1))
+    if (!token)
     {
-        flush();
-    }
-    else
-    {
-        LOG_ERROR("Failed to get JSONData");
+        LOGF_ERROR("Failed to parse token [%d] of JSON response '%s'", tok_index, lresponse);
         return false;
     }
-    char data[6][20] = {"", "", "", "", "", ""};
-    int returnCode = sscanf(lresponse, "%20[^,]%*[,]%20[^,]%*[,]%20[^#]%*[#\",]%20[^,]%*[,]%20[^,]%*[,]%20[^,]", data[0],
-                            data[1], data[2], data[3], data[4], data[5]);
-    if (returnCode < 1)
-    {
-        LOGF_ERROR("Failed to parse JSONData '%s'.", lresponse);
-        return false;
-    }
-    strncpy(jstr, data[jindex], jstrlen);
+    strncpy(data, token, strlen(token));
     return true;
 }
 
@@ -1502,29 +1476,21 @@ bool LX200Skywalker::sendQuery(const char* cmd, char* response, char end, int wa
     response[0] = '\0';
     char lresponse[TCS_RESPONSE_BUFFER_LENGTH];
     lresponse [0] = '\0';
-    bool lresult = false;
     if(!transmit(cmd))
+        return false;
+    else if ((wait > TCS_NOANSWER) && (receive(lresponse, end, wait)))
     {
-        LOGF_ERROR("Command <%s> not transmitted.", cmd);
-    }
-    else if (wait > TCS_NOANSWER)
-    {
-        if (receive(lresponse, end, wait))
-        {
-            strcpy(response, lresponse);
-            return true;
-        }
+        strcpy(response, lresponse);
+        return true;
     }
     else
-        lresult = true;
-    return lresult;
+        return true;
 }
 
 bool LX200Skywalker::transmit(const char* buffer)
 {
     //    LOG_DEBUG(__FUNCTION__);
     int bytesWritten = 0;
-    flush();
     int returnCode = tty_write_string(PortFD, buffer, &bytesWritten);
     if (returnCode != TTY_OK)
     {
@@ -1554,6 +1520,7 @@ bool LX200Skywalker::receive(char* buffer, char end, int wait)
         buffer[bytes - 1] = '\0'; // remove #
     else
         buffer[bytes] = '\0';
-
+    tcflush(PortFD, TCIOFLUSH);
     return true;
 }
+
